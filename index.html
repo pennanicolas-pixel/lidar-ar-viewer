@@ -273,15 +273,20 @@
                 const x = view.getFloat32(offset, true); offset += 4;
                 const y = view.getFloat32(offset, true); offset += 4;
                 const z = view.getFloat32(offset, true); offset += 4;
-                const rgb = view.getUint32(offset, true); offset += 4;
+                const rgba = view.getUint32(offset, true); offset += 4;
 
                 positions[i * 3] = x;
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
 
-                colors[i * 3] = ((rgb >> 16) & 0xFF) / 255;
-                colors[i * 3 + 1] = ((rgb >> 8) & 0xFF) / 255;
-                colors[i * 3 + 2] = (rgb & 0xFF) / 255;
+                // Extraer RGB correctamente (formato RGBA)
+                const r = (rgba & 0xFF) / 255;
+                const g = ((rgba >> 8) & 0xFF) / 255;
+                const b = ((rgba >> 16) & 0xFF) / 255;
+                
+                colors[i * 3] = r;
+                colors[i * 3 + 1] = g;
+                colors[i * 3 + 2] = b;
 
                 minX = Math.min(minX, x); maxX = Math.max(maxX, x);
                 minY = Math.min(minY, y); maxY = Math.max(maxY, y);
@@ -325,11 +330,14 @@
 
             pointCloud = new THREE.Points(geometry, material);
             
+            // ROTAR 90° en X para corregir orientación
+            pointCloud.rotation.x = Math.PI / 2;
+            
             // Centrar el modelo en el origen
             pointCloud.position.set(
                 -modelBounds.center.x,
-                -modelBounds.center.y,
-                -modelBounds.center.z
+                -modelBounds.center.z,  // Intercambiado por la rotación
+                -modelBounds.center.y
             );
             
             scene.add(pointCloud);
@@ -422,7 +430,7 @@
                 initialOrientation = { alpha, beta, gamma };
             }
             
-            yaw = THREE.MathUtils.degToRad(alpha);
+            yaw = -THREE.MathUtils.degToRad(alpha);  // Invertido para corregir dirección
             pitch = THREE.MathUtils.degToRad(beta - 90);
             pitch = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, pitch));
         }
