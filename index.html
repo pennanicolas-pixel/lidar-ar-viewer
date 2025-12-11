@@ -102,9 +102,11 @@
         let rotationX = 0, rotationY = 0;
         let cameraDistance = 20;
 
+        // Inicializar Three.js
         function init() {
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111111);
+            scene.background = new THREE.Color(0x222222);
+            scene.fog = new THREE.Fog(0x222222, 10, 50);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.z = cameraDistance;
@@ -114,6 +116,7 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('container').appendChild(renderer.domElement);
 
+            // Luces
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
             scene.add(ambientLight);
 
@@ -121,14 +124,19 @@
             directionalLight.position.set(1, 1, 1);
             scene.add(directionalLight);
 
+            // Cargar modelo PLY
             loadPLY();
+
+            // Event listeners
             setupControls();
             window.addEventListener('resize', onWindowResize);
             animate();
         }
 
+        // Cargar archivo PLY desde Google Drive
         function loadPLY() {
-            const downloadUrl = 'https://pennanicolas-pixel.github.io/lidar-ar-viewer/2025-11-28_13-39-14_500000.ply';
+            const fileId = '19AKVdTQJHqSsUg3DoewQjQPh42fDdNPt';
+            const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
 
             fetch(downloadUrl)
                 .then(response => {
@@ -157,6 +165,7 @@
                 });
         }
 
+        // Parser PLY simplificado
         function parsePLY(buffer) {
             const decoder = new TextDecoder();
             const text = decoder.decode(buffer);
@@ -166,6 +175,7 @@
             const vertexMatch = header.match(/element vertex (\d+)/);
             const vertexCount = parseInt(vertexMatch[1]);
 
+            // Determinar formato
             const isBinary = header.includes('format binary');
             
             if (isBinary) {
@@ -233,6 +243,7 @@
 
             pointCloud = new THREE.Points(geometry, material);
             
+            // Centrar el modelo
             const center = geometry.boundingSphere.center;
             pointCloud.position.set(-center.x, -center.y, -center.z);
             
@@ -243,15 +254,19 @@
         }
 
         function updateProgress(percent) {
-            document.getElementById('loadingProgress').style.width = percent + '%';
-            document.getElementById('loadingText').textContent = Math.round(percent) + '%';
+            const clampedPercent = Math.min(percent, 100);
+            document.getElementById('loadingProgress').style.width = clampedPercent + '%';
+            document.getElementById('loadingText').textContent = Math.round(clampedPercent) + '%';
         }
 
+        // Controles táctiles y giroscopio
         function setupControls() {
             const container = renderer.domElement;
             
+            // Giroscopio
             document.getElementById('gyroButton').addEventListener('click', toggleGyro);
             
+            // Touch controls
             container.addEventListener('touchstart', onTouchStart, { passive: false });
             container.addEventListener('touchmove', onTouchMove, { passive: false });
             container.addEventListener('touchend', onTouchEnd, { passive: false });
