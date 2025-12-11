@@ -133,10 +133,9 @@
             animate();
         }
 
-        // Cargar archivo PLY desde Google Drive
+        // Cargar archivo PLY desde GitHub
         function loadPLY() {
-            const fileId = '19AKVdTQJHqSsUg3DoewQjQPh42fDdNPt';
-            const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            const downloadUrl = 'https://pennanicolas-pixel.github.io/lidar-ar-viewer/2025-11-28_13-39-14_500000.ply';
 
             fetch(downloadUrl)
                 .then(response => {
