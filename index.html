@@ -31,6 +31,9 @@
             color: white;
             text-align: center;
             z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
         }
         #loadingBar {
             width: 200px;
@@ -78,6 +81,18 @@
         #gyroButton.active {
             background: rgba(244, 67, 54, 0.9);
         }
+        #debug {
+            position: absolute;
+            top: 80px;
+            left: 10px;
+            color: lime;
+            font-size: 11px;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 10;
+            max-width: 300px;
+        }
     </style>
 </head>
 <body>
@@ -91,6 +106,7 @@
     </div>
     <button id="gyroButton">Activar Giroscopio</button>
     <div id="info">Toca y arrastra para rotar | Pellizca para zoom</div>
+    <div id="debug"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
@@ -100,53 +116,64 @@
         let touchStartDistance = 0;
         let lastTouchX = 0, lastTouchY = 0;
         let rotationX = 0, rotationY = 0;
-        let cameraDistance = 20;
+        let cameraDistance = 30;
 
-        // Inicializar Three.js
+        function debug(msg) {
+            const d = document.getElementById('debug');
+            d.innerHTML += msg + '<br>';
+            console.log(msg);
+        }
+
         function init() {
+            debug('Iniciando Three.js...');
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x222222);
-            scene.fog = new THREE.Fog(0x222222, 10, 50);
+            scene.background = new THREE.Color(0x333333);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = cameraDistance;
+            camera.position.set(0, 0, cameraDistance);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Luces
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1);
             scene.add(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-            directionalLight.position.set(1, 1, 1);
+            directionalLight.position.set(10, 10, 10);
             scene.add(directionalLight);
 
-            // Cargar modelo PLY
-            loadPLY();
+            // Agregar cubo de referencia
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            const material = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+            const cube = new THREE.Mesh(geometry, material);
+            scene.add(cube);
+            debug('Cubo de referencia agregado');
 
-            // Event listeners
+            loadPLY();
             setupControls();
             window.addEventListener('resize', onWindowResize);
             animate();
         }
 
-        // Cargar archivo PLY desde GitHub
         function loadPLY() {
+            debug('Iniciando carga PLY...');
             const downloadUrl = 'https://pennanicolas-pixel.github.io/lidar-ar-viewer/2025-11-28_13-39-14_500000.ply';
 
             fetch(downloadUrl)
                 .then(response => {
-                    if (!response.ok) throw new Error('Error al cargar el archivo');
+                    debug('Respuesta recibida: ' + response.status);
+                    if (!response.ok) throw new Error('Error HTTP: ' + response.status);
                     const reader = response.body.getReader();
                     const contentLength = +response.headers.get('Content-Length');
+                    debug('Tamaño archivo: ' + Math.round(contentLength/1024/1024) + 'MB');
                     let receivedLength = 0;
                     let chunks = [];
 
                     return reader.read().then(function processData({ done, value }) {
                         if (done) {
+                            debug('Descarga completada');
                             const blob = new Blob(chunks);
                             return blob.arrayBuffer();
                         }
@@ -157,34 +184,38 @@
                         return reader.read().then(processData);
                     });
                 })
-                .then(buffer => parsePLY(buffer))
+                .then(buffer => {
+                    debug('Parseando PLY...');
+                    parsePLY(buffer);
+                })
                 .catch(error => {
-                    console.error('Error:', error);
-                    document.getElementById('loadingText').textContent = 'Error al cargar. Verifica el link.';
+                    debug('ERROR: ' + error.message);
+                    document.getElementById('loadingText').textContent = 'Error: ' + error.message;
                 });
         }
 
-        // Parser PLY simplificado
         function parsePLY(buffer) {
             const decoder = new TextDecoder();
-            const text = decoder.decode(buffer);
+            const text = decoder.decode(buffer.slice(0, 5000));
             const headerEnd = text.indexOf('end_header');
             const header = text.substring(0, headerEnd);
             
             const vertexMatch = header.match(/element vertex (\d+)/);
             const vertexCount = parseInt(vertexMatch[1]);
+            debug('Vértices encontrados: ' + vertexCount);
 
-            // Determinar formato
             const isBinary = header.includes('format binary');
+            debug('Formato: ' + (isBinary ? 'binary' : 'ascii'));
             
             if (isBinary) {
                 parseBinaryPLY(buffer, headerEnd + 11, vertexCount);
             } else {
-                parseAsciiPLY(text, headerEnd + 11, vertexCount);
+                parseAsciiPLY(decoder.decode(buffer), headerEnd + 11, vertexCount);
             }
         }
 
         function parseBinaryPLY(buffer, dataStart, vertexCount) {
+            debug('Procesando puntos binarios...');
             const positions = new Float32Array(vertexCount * 3);
             const colors = new Float32Array(vertexCount * 3);
             const view = new DataView(buffer, dataStart);
@@ -198,15 +229,17 @@
                 colors[i * 3 + 1] = view.getUint8(offset) / 255; offset += 1;
                 colors[i * 3 + 2] = view.getUint8(offset) / 255; offset += 1;
                 
-                if (i % 10000 === 0) {
+                if (i % 50000 === 0) {
                     updateProgress(50 + (i / vertexCount * 50));
                 }
             }
             
-            createPointCloud(positions, colors);
+            debug('Puntos procesados: ' + vertexCount);
+            createPointCloud(positions, colors, vertexCount);
         }
 
         function parseAsciiPLY(text, dataStart, vertexCount) {
+            debug('Procesando puntos ASCII...');
             const lines = text.substring(dataStart).split('\n');
             const positions = new Float32Array(vertexCount * 3);
             const colors = new Float32Array(vertexCount * 3);
@@ -220,33 +253,44 @@
                 colors[i * 3 + 1] = parseInt(parts[4]) / 255;
                 colors[i * 3 + 2] = parseInt(parts[5]) / 255;
                 
-                if (i % 10000 === 0) {
+                if (i % 50000 === 0) {
                     updateProgress(50 + (i / vertexCount * 50));
                 }
             }
             
-            createPointCloud(positions, colors);
+            debug('Puntos procesados: ' + vertexCount);
+            createPointCloud(positions, colors, vertexCount);
         }
 
-        function createPointCloud(positions, colors) {
+        function createPointCloud(positions, colors, count) {
+            debug('Creando geometría...');
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
             geometry.computeBoundingSphere();
 
+            const radius = geometry.boundingSphere.radius;
+            const center = geometry.boundingSphere.center;
+            debug('Radio: ' + radius.toFixed(2) + ', Centro: ' + center.x.toFixed(2) + ',' + center.y.toFixed(2) + ',' + center.z.toFixed(2));
+
+            const scale = 10 / radius;
+            debug('Escala aplicada: ' + scale.toFixed(4));
+
             const material = new THREE.PointsMaterial({
-                size: 0.05,
+                size: 0.15,
                 vertexColors: true,
                 sizeAttenuation: true
             });
 
             pointCloud = new THREE.Points(geometry, material);
-            
-            // Centrar el modelo
-            const center = geometry.boundingSphere.center;
-            pointCloud.position.set(-center.x, -center.y, -center.z);
+            pointCloud.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+            pointCloud.scale.set(scale, scale, scale);
             
             scene.add(pointCloud);
+            debug('¡Nube de puntos agregada a la escena!');
+            
+            cameraDistance = 20;
+            camera.position.z = cameraDistance;
             
             document.getElementById('loading').style.display = 'none';
             updateProgress(100);
@@ -258,14 +302,9 @@
             document.getElementById('loadingText').textContent = Math.round(clampedPercent) + '%';
         }
 
-        // Controles táctiles y giroscopio
         function setupControls() {
             const container = renderer.domElement;
-            
-            // Giroscopio
             document.getElementById('gyroButton').addEventListener('click', toggleGyro);
-            
-            // Touch controls
             container.addEventListener('touchstart', onTouchStart, { passive: false });
             container.addEventListener('touchmove', onTouchMove, { passive: false });
             container.addEventListener('touchend', onTouchEnd, { passive: false });
@@ -332,13 +371,13 @@
                     e.touches[0].pageY - e.touches[1].pageY
                 );
                 const delta = distance - touchStartDistance;
-                cameraDistance = Math.max(5, Math.min(50, cameraDistance - delta * 0.01));
+                cameraDistance = Math.max(5, Math.min(100, cameraDistance - delta * 0.05));
                 touchStartDistance = distance;
             } else if (e.touches.length === 1 && !gyroEnabled) {
                 const deltaX = e.touches[0].pageX - lastTouchX;
                 const deltaY = e.touches[0].pageY - lastTouchY;
-                rotationY += deltaX * 0.005;
-                rotationX += deltaY * 0.005;
+                rotationY += deltaX * 0.01;
+                rotationX += deltaY * 0.01;
                 lastTouchX = e.touches[0].pageX;
                 lastTouchY = e.touches[0].pageY;
             }
