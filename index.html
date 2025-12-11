@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Visor LiDAR Inmersivo</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/potree@1.8.2/build/potree/potree.css">
     <style>
         * {
             margin: 0;
@@ -14,14 +15,14 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background: #000;
             font-family: Arial, sans-serif;
-            touch-action: none;
         }
-        #container {
+        #potree_render_area {
             width: 100%;
             height: 100%;
-            position: relative;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
         #loading {
             position: absolute;
@@ -30,25 +31,23 @@
             transform: translate(-50%, -50%);
             color: white;
             text-align: center;
-            z-index: 100;
+            z-index: 1000;
             background: rgba(0,0,0,0.9);
             padding: 30px;
             border-radius: 15px;
             min-width: 300px;
         }
-        #loadingBar {
-            width: 250px;
-            height: 6px;
-            background: #333;
-            margin: 20px auto;
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        #loadingProgress {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #4CAF50, #8BC34A);
-            transition: width 0.3s;
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            z-index: 100;
+            display: none;
         }
         #gyroButton {
             position: absolute;
@@ -62,404 +61,194 @@
             font-size: 14px;
             font-weight: bold;
             cursor: pointer;
-            z-index: 10;
+            z-index: 100;
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             display: none;
         }
         #gyroButton.active {
             background: rgba(244, 67, 54, 0.9);
         }
-        #info {
+        .potree_container {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            color: white;
-            background: rgba(0,0,0,0.8);
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 12px;
-            z-index: 10;
-            display: none;
-            max-width: 250px;
-        }
-        #debugControls {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: white;
-            background: rgba(0,0,0,0.8);
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 11px;
-            z-index: 10;
-            display: none;
-        }
-        #debugControls button {
-            margin: 5px 5px 5px 0;
-            padding: 8px 12px;
-            background: rgba(76, 175, 80, 0.8);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 11px;
-        }
-        #debugInfo {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            color: lime;
-            background: rgba(0,0,0,0.8);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 10px;
-            font-family: monospace;
-            z-index: 10;
-            display: none;
+            width: 100%;
+            height: 100%;
+            left: 0;
+            top: 0;
         }
     </style>
 </head>
 <body>
-    <div id="container"></div>
     <div id="loading">
-        <h2>🏛️ Cargando Espacio</h2>
-        <div id="loadingBar">
-            <div id="loadingProgress"></div>
-        </div>
-        <p id="loadingText">Preparando experiencia inmersiva...</p>
-        <p style="font-size: 11px; margin-top: 15px; opacity: 0.7;">Este proceso puede tardar 1-2 minutos</p>
+        <h2>🏛️ Cargando Espacio LiDAR</h2>
+        <p style="margin-top: 15px; font-size: 14px;">Esto puede tardar 1-2 minutos...</p>
     </div>
-    <button id="gyroButton">Activar Giroscopio</button>
+    
+    <button id="gyroButton">Activar Navegación</button>
+    
     <div id="info">
-        📱 Mueve el celular para mirar<br>
-        🚶 Camina físicamente para moverte<br><br>
-        <span style="font-size: 10px; opacity: 0.8;">Usa los controles de abajo para ajustar la posición inicial</span>
+        📱 Mueve el celular para mirar alrededor<br>
+        🚶 Camina físicamente para moverte
     </div>
-    <div id="debugControls">
-        <strong>Ajustar Posición:</strong><br>
-        <button onclick="adjustHeight(1)">⬆️ Subir</button>
-        <button onclick="adjustHeight(-1)">⬇️ Bajar</button>
-        <button onclick="adjustHeight(5)">⬆️⬆️ +5m</button>
-        <button onclick="adjustHeight(-5)">⬇️⬇️ -5m</button><br>
-        <button onclick="adjustScale(1.2)">🔍 Agrandar</button>
-        <button onclick="adjustScale(0.8)">🔍 Achicar</button><br>
-        <button onclick="resetPosition()">🔄 Reset</button>
-    </div>
-    <div id="debugInfo"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div class="potree_container">
+        <div id="potree_render_area"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/potree@1.8.2/build/potree/potree.js"></script>
+    
     <script>
-        let scene, camera, renderer, pointCloud;
+        let viewer;
         let gyroEnabled = false;
-        let cameraHeight = 0;
-        let yaw = 0, pitch = 0;
-        let modelScale = 1;
-        let modelBounds = { min: null, max: null };
-        let initialOrientation = null;
-
-        const modelURL = 'https://pub-1e69cc75cdd542d999c8606439faeee6.r2.dev/modelo_8m.pcd';
-
-        function updateLoadingText(text) {
-            document.getElementById('loadingText').textContent = text;
-        }
-
-        function updateProgress(percent) {
-            const clampedPercent = Math.min(percent, 100);
-            document.getElementById('loadingProgress').style.width = clampedPercent + '%';
-        }
-
-        function updateDebugInfo() {
-            const info = document.getElementById('debugInfo');
-            if (!info.style.display || info.style.display === 'none') return;
-            
-            info.innerHTML = `
-                Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}<br>
-                Altura: ${cameraHeight.toFixed(1)}m<br>
-                Escala: ${modelScale.toFixed(2)}x<br>
-                Yaw: ${(yaw * 180 / Math.PI).toFixed(0)}°<br>
-                Pitch: ${(pitch * 180 / Math.PI).toFixed(0)}°
-            `;
-        }
+        let baseYaw = 0, basePitch = 0;
+        let currentYaw = 0, currentPitch = 0;
+        
+        const modelURL = "https://pub-1e69cc75cdd542d999c8606439faeee6.r2.dev/salida_potree/chunks/metadata.json";
 
         function init() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB);
-            scene.fog = new THREE.Fog(0x87CEEB, 30, 150);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
-            camera.position.set(0, 0, 0);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.getElementById('container').appendChild(renderer.domElement);
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-            scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-            directionalLight.position.set(20, 50, 20);
-            scene.add(directionalLight);
-
-            // Grid de referencia
-            const gridHelper = new THREE.GridHelper(100, 50, 0x00ff00, 0x004400);
-            gridHelper.position.y = 0;
-            scene.add(gridHelper);
-
-            loadPCD();
-            setupControls();
-            window.addEventListener('resize', onWindowResize);
-            animate();
+            viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
+            
+            viewer.setEDLEnabled(true);
+            viewer.setFOV(75);
+            viewer.setPointBudget(3_000_000);
+            viewer.setMinNodeSize(0);
+            viewer.setBackground("gradient");
+            
+            // Configurar controles
+            viewer.setControls(viewer.orbitControls);
+            viewer.orbitControls.enabled = false; // Desactivar controles por defecto
+            
+            loadPointCloud();
+            setupGyroButton();
         }
 
-        function loadPCD() {
-            updateLoadingText('Descargando modelo (288 MB)...');
-            
-            fetch(modelURL)
-                .then(response => {
-                    if (!response.ok) throw new Error('Error al cargar: ' + response.status);
-                    const reader = response.body.getReader();
-                    const contentLength = +response.headers.get('Content-Length') || 288000000;
-                    let receivedLength = 0;
-                    let chunks = [];
-
-                    return reader.read().then(function processData({ done, value }) {
-                        if (done) {
-                            updateLoadingText('Procesando puntos...');
-                            const blob = new Blob(chunks);
-                            return blob.arrayBuffer();
-                        }
-                        chunks.push(value);
-                        receivedLength += value.length;
-                        const progress = (receivedLength / contentLength * 80);
-                        updateProgress(progress);
-                        const mb = (receivedLength / 1024 / 1024).toFixed(1);
-                        updateLoadingText(`Descargando: ${mb} MB / 288 MB`);
-                        return reader.read().then(processData);
-                    });
-                })
-                .then(buffer => parsePCD(buffer))
-                .catch(error => {
-                    updateLoadingText('Error: ' + error.message);
-                    console.error('Error:', error);
-                });
-        }
-
-        function parsePCD(buffer) {
-            updateProgress(85);
-            const decoder = new TextDecoder();
-            const text = decoder.decode(buffer.slice(0, 10000));
-            const headerEnd = text.indexOf('DATA binary');
-            
-            if (headerEnd === -1) {
-                throw new Error('Formato PCD no reconocido');
-            }
-
-            const header = text.substring(0, headerEnd);
-            const pointsMatch = header.match(/POINTS (\d+)/);
-            const pointCount = parseInt(pointsMatch[1]);
-
-            updateLoadingText(`Procesando ${(pointCount/1000000).toFixed(1)}M puntos...`);
-
-            const positions = new Float32Array(pointCount * 3);
-            const colors = new Float32Array(pointCount * 3);
-            const view = new DataView(buffer);
-
-            let minX = Infinity, maxX = -Infinity;
-            let minY = Infinity, maxY = -Infinity;
-            let minZ = Infinity, maxZ = -Infinity;
-            let offset = buffer.byteLength - (pointCount * 16);
-
-            for (let i = 0; i < pointCount; i++) {
-                const x = view.getFloat32(offset, true); offset += 4;
-                const y = view.getFloat32(offset, true); offset += 4;
-                const z = view.getFloat32(offset, true); offset += 4;
-                const rgba = view.getUint32(offset, true); offset += 4;
-
-                positions[i * 3] = x;
-                positions[i * 3 + 1] = y;
-                positions[i * 3 + 2] = z;
-
-                // Extraer RGB correctamente (formato RGBA)
-                const r = (rgba & 0xFF) / 255;
-                const g = ((rgba >> 8) & 0xFF) / 255;
-                const b = ((rgba >> 16) & 0xFF) / 255;
+        function loadPointCloud() {
+            Potree.loadPointCloud(modelURL, "Espacio", (e) => {
+                if (e.type === "loading_failed") {
+                    document.getElementById('loading').innerHTML = 
+                        '<h2>❌ Error al cargar</h2><p>No se pudo acceder al modelo</p>';
+                    return;
+                }
                 
-                colors[i * 3] = r;
-                colors[i * 3 + 1] = g;
-                colors[i * 3 + 2] = b;
-
-                minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-                minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
-
-                if (i % 100000 === 0) {
-                    updateProgress(85 + (i / pointCount * 10));
-                }
-            }
-
-            modelBounds = {
-                min: { x: minX, y: minY, z: minZ },
-                max: { x: maxX, y: maxY, z: maxZ },
-                center: { 
-                    x: (minX + maxX) / 2, 
-                    y: (minY + maxY) / 2, 
-                    z: (minZ + maxZ) / 2 
-                },
-                size: {
-                    x: maxX - minX,
-                    y: maxY - minY,
-                    z: maxZ - minZ
-                }
-            };
-
-            updateLoadingText('Creando escena...');
-            createPointCloud(positions, colors, pointCount);
-        }
-
-        function createPointCloud(positions, colors, count) {
-            updateProgress(95);
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-            const material = new THREE.PointsMaterial({
-                size: 0.04,
-                vertexColors: true,
-                sizeAttenuation: true
+                let pointcloud = e.pointcloud;
+                let material = pointcloud.material;
+                
+                viewer.scene.addPointCloud(pointcloud);
+                
+                // Configurar material
+                material.pointColorType = Potree.PointColorType.RGB;
+                material.size = 1.0;
+                material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
+                material.shape = Potree.PointShape.SQUARE;
+                
+                // Ajustar vista inicial
+                viewer.fitToScreen();
+                
+                // Posicionar cámara a altura de persona
+                setTimeout(() => {
+                    const boundingBox = pointcloud.boundingBox;
+                    const center = boundingBox.getCenter(new THREE.Vector3());
+                    const minY = boundingBox.min.y;
+                    
+                    viewer.scene.view.position.set(
+                        center.x,
+                        minY + 1.7, // 1.7m sobre el suelo
+                        center.z
+                    );
+                    
+                    viewer.scene.view.lookAt(
+                        center.x,
+                        minY + 1.7,
+                        center.z - 5
+                    );
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('gyroButton').style.display = 'block';
+                    document.getElementById('info').style.display = 'block';
+                }, 1000);
             });
-
-            pointCloud = new THREE.Points(geometry, material);
-            
-            // ROTAR 90° en X para corregir orientación
-            pointCloud.rotation.x = Math.PI / 2;
-            
-            // Centrar el modelo en el origen
-            pointCloud.position.set(
-                -modelBounds.center.x,
-                -modelBounds.center.z,  // Intercambiado por la rotación
-                -modelBounds.center.y
-            );
-            
-            scene.add(pointCloud);
-
-            // Posicionar cámara en el centro, a 1.7m sobre el suelo del modelo
-            cameraHeight = 1.7;
-            camera.position.set(0, cameraHeight, 0);
-            
-            console.log('Modelo cargado:', modelBounds);
-            
-            updateProgress(100);
-            updateLoadingText('¡Listo! Activando controles...');
-            
-            setTimeout(() => {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('gyroButton').style.display = 'block';
-                document.getElementById('info').style.display = 'block';
-                document.getElementById('debugControls').style.display = 'block';
-                document.getElementById('debugInfo').style.display = 'block';
-            }, 500);
         }
 
-        function adjustHeight(delta) {
-            cameraHeight += delta;
-            camera.position.y = cameraHeight;
-            updateDebugInfo();
-        }
-
-        function adjustScale(factor) {
-            modelScale *= factor;
-            if (pointCloud) {
-                pointCloud.scale.set(modelScale, modelScale, modelScale);
-            }
-            updateDebugInfo();
-        }
-
-        function resetPosition() {
-            cameraHeight = 1.7;
-            modelScale = 1;
-            camera.position.set(0, cameraHeight, 0);
-            if (pointCloud) {
-                pointCloud.scale.set(1, 1, 1);
-            }
-            updateDebugInfo();
-        }
-
-        function setupControls() {
-            const gyroBtn = document.getElementById('gyroButton');
-            gyroBtn.addEventListener('click', toggleGyro);
-        }
-
-        function toggleGyro() {
-            if (!gyroEnabled) {
-                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                    DeviceOrientationEvent.requestPermission()
-                        .then(response => {
-                            if (response === 'granted') enableGyro();
-                        })
-                        .catch(console.error);
+        function setupGyroButton() {
+            const btn = document.getElementById('gyroButton');
+            btn.addEventListener('click', () => {
+                if (!gyroEnabled) {
+                    requestGyroPermission();
                 } else {
-                    enableGyro();
+                    disableGyro();
                 }
+            });
+        }
+
+        function requestGyroPermission() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && 
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response === 'granted') {
+                            enableGyro();
+                        }
+                    })
+                    .catch(console.error);
             } else {
-                disableGyro();
+                enableGyro();
             }
         }
 
         function enableGyro() {
             gyroEnabled = true;
-            window.addEventListener('deviceorientation', onDeviceOrientation);
-            document.getElementById('gyroButton').textContent = 'Desactivar Giroscopio';
-            document.getElementById('gyroButton').classList.add('active');
+            window.addEventListener('deviceorientation', handleOrientation);
+            
+            const btn = document.getElementById('gyroButton');
+            btn.textContent = 'Desactivar Navegación';
+            btn.classList.add('active');
+            
+            // Desactivar controles de ratón/touch
+            viewer.orbitControls.enabled = false;
         }
 
         function disableGyro() {
             gyroEnabled = false;
-            window.removeEventListener('deviceorientation', onDeviceOrientation);
-            document.getElementById('gyroButton').textContent = 'Activar Giroscopio';
-            document.getElementById('gyroButton').classList.remove('active');
-        }
-
-        function onDeviceOrientation(event) {
-            if (!gyroEnabled) return;
+            window.removeEventListener('deviceorientation', handleOrientation);
             
-            const alpha = event.alpha || 0;
-            const beta = event.beta || 0;
-            const gamma = event.gamma || 0;
+            const btn = document.getElementById('gyroButton');
+            btn.textContent = 'Activar Navegación';
+            btn.classList.remove('active');
             
-            if (!initialOrientation) {
-                initialOrientation = { alpha, beta, gamma };
-            }
+            viewer.orbitControls.enabled = true;
+        }
+
+        function handleOrientation(event) {
+            if (!gyroEnabled || !viewer || !viewer.scene) return;
             
-            yaw = -THREE.MathUtils.degToRad(alpha);  // Invertido para corregir dirección
-            pitch = THREE.MathUtils.degToRad(beta - 90);
-            pitch = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, pitch));
+            const alpha = event.alpha || 0; // Z axis (compass)
+            const beta = event.beta || 0;   // X axis (front-back tilt)
+            const gamma = event.gamma || 0; // Y axis (left-right tilt)
+            
+            // Convertir a radianes
+            const yaw = THREE.MathUtils.degToRad(alpha);
+            const pitch = THREE.MathUtils.degToRad(beta - 90);
+            
+            // Limitar pitch
+            const clampedPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
+            
+            // Aplicar rotación a la cámara
+            const camera = viewer.scene.getActiveCamera();
+            const position = viewer.scene.view.position.clone();
+            
+            // Calcular dirección de vista
+            const lookDistance = 5;
+            const lookAt = new THREE.Vector3(
+                position.x + Math.sin(yaw) * Math.cos(clampedPitch) * lookDistance,
+                position.y + Math.sin(clampedPitch) * lookDistance,
+                position.z + Math.cos(yaw) * Math.cos(clampedPitch) * lookDistance
+            );
+            
+            viewer.scene.view.lookAt(lookAt);
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (pointCloud && gyroEnabled) {
-                camera.rotation.order = 'YXZ';
-                camera.rotation.y = -yaw;
-                camera.rotation.x = pitch;
-            }
-
-            updateDebugInfo();
-            renderer.render(scene, camera);
-        }
-
-        // Exponer funciones globalmente para los botones
-        window.adjustHeight = adjustHeight;
-        window.adjustScale = adjustScale;
-        window.resetPosition = resetPosition;
-
-        init();
+        // Iniciar cuando cargue la página
+        window.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
