@@ -50,35 +50,6 @@
             background: linear-gradient(90deg, #4CAF50, #8BC34A);
             transition: width 0.3s;
         }
-        #controls {
-            position: absolute;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: none;
-            z-index: 10;
-        }
-        #joystick {
-            width: 120px;
-            height: 120px;
-            background: rgba(255,255,255,0.1);
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            position: relative;
-            touch-action: none;
-        }
-        #joystickKnob {
-            width: 50px;
-            height: 50px;
-            background: rgba(76, 175, 80, 0.8);
-            border: 2px solid white;
-            border-radius: 50%;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-        }
         #gyroButton {
             position: absolute;
             top: 20px;
@@ -103,28 +74,47 @@
             top: 20px;
             left: 20px;
             color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 12px 20px;
-            border-radius: 10px;
-            font-size: 13px;
-            z-index: 10;
-            display: none;
-        }
-        #speedControl {
-            position: absolute;
-            bottom: 30px;
-            right: 30px;
-            color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 10px 15px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px 20px;
             border-radius: 10px;
             font-size: 12px;
             z-index: 10;
             display: none;
+            max-width: 250px;
         }
-        #speedControl input {
-            width: 100px;
-            margin-top: 5px;
+        #debugControls {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 11px;
+            z-index: 10;
+            display: none;
+        }
+        #debugControls button {
+            margin: 5px 5px 5px 0;
+            padding: 8px 12px;
+            background: rgba(76, 175, 80, 0.8);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 11px;
+        }
+        #debugInfo {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: lime;
+            background: rgba(0,0,0,0.8);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 10px;
+            font-family: monospace;
+            z-index: 10;
+            display: none;
         }
     </style>
 </head>
@@ -140,30 +130,31 @@
     </div>
     <button id="gyroButton">Activar Giroscopio</button>
     <div id="info">
-        👁️ Mira alrededor con el giroscopio<br>
-        🕹️ Usa el joystick para moverte
+        📱 Mueve el celular para mirar<br>
+        🚶 Camina físicamente para moverte<br><br>
+        <span style="font-size: 10px; opacity: 0.8;">Usa los controles de abajo para ajustar la posición inicial</span>
     </div>
-    <div id="speedControl">
-        Velocidad de movimiento<br>
-        <input type="range" id="speedSlider" min="0.5" max="5" step="0.5" value="2">
-        <span id="speedValue">2.0</span>
+    <div id="debugControls">
+        <strong>Ajustar Posición:</strong><br>
+        <button onclick="adjustHeight(1)">⬆️ Subir</button>
+        <button onclick="adjustHeight(-1)">⬇️ Bajar</button>
+        <button onclick="adjustHeight(5)">⬆️⬆️ +5m</button>
+        <button onclick="adjustHeight(-5)">⬇️⬇️ -5m</button><br>
+        <button onclick="adjustScale(1.2)">🔍 Agrandar</button>
+        <button onclick="adjustScale(0.8)">🔍 Achicar</button><br>
+        <button onclick="resetPosition()">🔄 Reset</button>
     </div>
-    <div id="controls">
-        <div id="joystick">
-            <div id="joystickKnob"></div>
-        </div>
-    </div>
+    <div id="debugInfo"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         let scene, camera, renderer, pointCloud;
         let gyroEnabled = false;
-        let moveX = 0, moveZ = 0;
-        let cameraHeight = 1.6;
-        let moveSpeed = 2.0;
+        let cameraHeight = 0;
         let yaw = 0, pitch = 0;
-        let groundLevel = 0;
-        let joystickActive = false;
+        let modelScale = 1;
+        let modelBounds = { min: null, max: null };
+        let initialOrientation = null;
 
         const modelURL = 'https://pub-1e69cc75cdd542d999c8606439faeee6.r2.dev/modelo_8m.pcd';
 
@@ -176,25 +167,43 @@
             document.getElementById('loadingProgress').style.width = clampedPercent + '%';
         }
 
+        function updateDebugInfo() {
+            const info = document.getElementById('debugInfo');
+            if (!info.style.display || info.style.display === 'none') return;
+            
+            info.innerHTML = `
+                Pos: ${camera.position.x.toFixed(1)}, ${camera.position.y.toFixed(1)}, ${camera.position.z.toFixed(1)}<br>
+                Altura: ${cameraHeight.toFixed(1)}m<br>
+                Escala: ${modelScale.toFixed(2)}x<br>
+                Yaw: ${(yaw * 180 / Math.PI).toFixed(0)}°<br>
+                Pitch: ${(pitch * 180 / Math.PI).toFixed(0)}°
+            `;
+        }
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
-            scene.fog = new THREE.Fog(0x87CEEB, 20, 100);
+            scene.fog = new THREE.Fog(0x87CEEB, 30, 150);
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-            camera.position.set(0, cameraHeight, 0);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
+            camera.position.set(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             document.getElementById('container').appendChild(renderer.domElement);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
             scene.add(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-            directionalLight.position.set(10, 20, 10);
+            directionalLight.position.set(20, 50, 20);
             scene.add(directionalLight);
+
+            // Grid de referencia
+            const gridHelper = new THREE.GridHelper(100, 50, 0x00ff00, 0x004400);
+            gridHelper.position.y = 0;
+            scene.add(gridHelper);
 
             loadPCD();
             setupControls();
@@ -251,12 +260,13 @@
 
             updateLoadingText(`Procesando ${(pointCount/1000000).toFixed(1)}M puntos...`);
 
-            const dataStart = new Blob([buffer]).size - (pointCount * 16);
             const positions = new Float32Array(pointCount * 3);
             const colors = new Float32Array(pointCount * 3);
             const view = new DataView(buffer);
 
-            let minY = Infinity;
+            let minX = Infinity, maxX = -Infinity;
+            let minY = Infinity, maxY = -Infinity;
+            let minZ = Infinity, maxZ = -Infinity;
             let offset = buffer.byteLength - (pointCount * 16);
 
             for (let i = 0; i < pointCount; i++) {
@@ -273,14 +283,30 @@
                 colors[i * 3 + 1] = ((rgb >> 8) & 0xFF) / 255;
                 colors[i * 3 + 2] = (rgb & 0xFF) / 255;
 
-                if (y < minY) minY = y;
+                minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+                minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
 
                 if (i % 100000 === 0) {
                     updateProgress(85 + (i / pointCount * 10));
                 }
             }
 
-            groundLevel = minY;
+            modelBounds = {
+                min: { x: minX, y: minY, z: minZ },
+                max: { x: maxX, y: maxY, z: maxZ },
+                center: { 
+                    x: (minX + maxX) / 2, 
+                    y: (minY + maxY) / 2, 
+                    z: (minZ + maxZ) / 2 
+                },
+                size: {
+                    x: maxX - minX,
+                    y: maxY - minY,
+                    z: maxZ - minZ
+                }
+            };
+
             updateLoadingText('Creando escena...');
             createPointCloud(positions, colors, pointCount);
         }
@@ -292,15 +318,27 @@
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             const material = new THREE.PointsMaterial({
-                size: 0.03,
+                size: 0.04,
                 vertexColors: true,
                 sizeAttenuation: true
             });
 
             pointCloud = new THREE.Points(geometry, material);
+            
+            // Centrar el modelo en el origen
+            pointCloud.position.set(
+                -modelBounds.center.x,
+                -modelBounds.center.y,
+                -modelBounds.center.z
+            );
+            
             scene.add(pointCloud);
 
-            camera.position.y = groundLevel + cameraHeight;
+            // Posicionar cámara en el centro, a 1.7m sobre el suelo del modelo
+            cameraHeight = 1.7;
+            camera.position.set(0, cameraHeight, 0);
+            
+            console.log('Modelo cargado:', modelBounds);
             
             updateProgress(100);
             updateLoadingText('¡Listo! Activando controles...');
@@ -308,62 +346,39 @@
             setTimeout(() => {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('gyroButton').style.display = 'block';
-                document.getElementById('controls').style.display = 'block';
                 document.getElementById('info').style.display = 'block';
-                document.getElementById('speedControl').style.display = 'block';
+                document.getElementById('debugControls').style.display = 'block';
+                document.getElementById('debugInfo').style.display = 'block';
             }, 500);
+        }
+
+        function adjustHeight(delta) {
+            cameraHeight += delta;
+            camera.position.y = cameraHeight;
+            updateDebugInfo();
+        }
+
+        function adjustScale(factor) {
+            modelScale *= factor;
+            if (pointCloud) {
+                pointCloud.scale.set(modelScale, modelScale, modelScale);
+            }
+            updateDebugInfo();
+        }
+
+        function resetPosition() {
+            cameraHeight = 1.7;
+            modelScale = 1;
+            camera.position.set(0, cameraHeight, 0);
+            if (pointCloud) {
+                pointCloud.scale.set(1, 1, 1);
+            }
+            updateDebugInfo();
         }
 
         function setupControls() {
             const gyroBtn = document.getElementById('gyroButton');
             gyroBtn.addEventListener('click', toggleGyro);
-
-            const joystick = document.getElementById('joystick');
-            const knob = document.getElementById('joystickKnob');
-
-            joystick.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                joystickActive = true;
-            });
-
-            joystick.addEventListener('touchmove', (e) => {
-                if (!joystickActive) return;
-                e.preventDefault();
-                
-                const touch = e.touches[0];
-                const rect = joystick.getBoundingClientRect();
-                const centerX = rect.left + rect.width / 2;
-                const centerY = rect.top + rect.height / 2;
-                
-                let deltaX = touch.clientX - centerX;
-                let deltaY = touch.clientY - centerY;
-                
-                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                const maxDistance = 35;
-                
-                if (distance > maxDistance) {
-                    deltaX = (deltaX / distance) * maxDistance;
-                    deltaY = (deltaY / distance) * maxDistance;
-                }
-                
-                knob.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
-                
-                moveX = deltaX / maxDistance;
-                moveZ = -deltaY / maxDistance;
-            });
-
-            joystick.addEventListener('touchend', () => {
-                joystickActive = false;
-                knob.style.transform = 'translate(-50%, -50%)';
-                moveX = 0;
-                moveZ = 0;
-            });
-
-            const speedSlider = document.getElementById('speedSlider');
-            speedSlider.addEventListener('input', (e) => {
-                moveSpeed = parseFloat(e.target.value);
-                document.getElementById('speedValue').textContent = moveSpeed.toFixed(1);
-            });
         }
 
         function toggleGyro() {
@@ -403,9 +418,13 @@
             const beta = event.beta || 0;
             const gamma = event.gamma || 0;
             
+            if (!initialOrientation) {
+                initialOrientation = { alpha, beta, gamma };
+            }
+            
             yaw = THREE.MathUtils.degToRad(alpha);
             pitch = THREE.MathUtils.degToRad(beta - 90);
-            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            pitch = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, pitch));
         }
 
         function onWindowResize() {
@@ -417,34 +436,20 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            if (pointCloud) {
-                const forward = new THREE.Vector3(
-                    Math.sin(yaw),
-                    0,
-                    Math.cos(yaw)
-                );
-                const right = new THREE.Vector3(
-                    Math.cos(yaw),
-                    0,
-                    -Math.sin(yaw)
-                );
-
-                const moveVector = new THREE.Vector3();
-                moveVector.add(forward.multiplyScalar(moveZ));
-                moveVector.add(right.multiplyScalar(moveX));
-                moveVector.multiplyScalar(moveSpeed * 0.05);
-
-                camera.position.x += moveVector.x;
-                camera.position.z += moveVector.z;
-                camera.position.y = groundLevel + cameraHeight;
-
+            if (pointCloud && gyroEnabled) {
                 camera.rotation.order = 'YXZ';
                 camera.rotation.y = -yaw;
                 camera.rotation.x = pitch;
             }
 
+            updateDebugInfo();
             renderer.render(scene, camera);
         }
+
+        // Exponer funciones globalmente para los botones
+        window.adjustHeight = adjustHeight;
+        window.adjustScale = adjustScale;
+        window.resetPosition = resetPosition;
 
         init();
     </script>
