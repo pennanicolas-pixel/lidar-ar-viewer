@@ -4,25 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Visor LiDAR Inmersivo</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/potree@1.8.2/build/potree/potree.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            width: 100vw; 
+            height: 100vh; 
+            overflow: hidden; 
             font-family: Arial, sans-serif;
+            background: #000;
         }
-        #potree_render_area {
+        #container {
             width: 100%;
             height: 100%;
             position: absolute;
-            top: 0;
-            left: 0;
         }
         #loading {
             position: absolute;
@@ -32,223 +26,391 @@
             color: white;
             text-align: center;
             z-index: 1000;
-            background: rgba(0,0,0,0.9);
-            padding: 30px;
-            border-radius: 15px;
-            min-width: 300px;
+            background: rgba(0,0,0,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            min-width: 340px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        }
+        #loadingBar {
+            width: 280px;
+            height: 8px;
+            background: #222;
+            margin: 25px auto 15px;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #444;
+        }
+        #loadingProgress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #66BB6A);
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        #gyroButton {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(76, 175, 80, 0.95);
+            color: white;
+            border: none;
+            padding: 18px 32px;
+            border-radius: 30px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            display: none;
+            transition: all 0.3s;
+        }
+        #gyroButton:active {
+            transform: scale(0.95);
+        }
+        #gyroButton.active {
+            background: rgba(244, 67, 54, 0.95);
+            box-shadow: 0 6px 20px rgba(244, 67, 54, 0.4);
         }
         #info {
             position: absolute;
             top: 20px;
             left: 20px;
             color: white;
-            background: rgba(0,0,0,0.7);
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 13px;
-            z-index: 100;
-            display: none;
-        }
-        #gyroButton {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(76, 175, 80, 0.9);
-            color: white;
-            border: none;
-            padding: 15px 25px;
-            border-radius: 25px;
+            background: rgba(0,0,0,0.85);
+            padding: 18px 24px;
+            border-radius: 15px;
             font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
             z-index: 100;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             display: none;
+            line-height: 1.8;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        #gyroButton.active {
-            background: rgba(244, 67, 54, 0.9);
-        }
-        .potree_container {
+        #stats {
             position: absolute;
-            width: 100%;
-            height: 100%;
-            left: 0;
-            top: 0;
+            bottom: 20px;
+            left: 20px;
+            color: #4CAF50;
+            background: rgba(0,0,0,0.8);
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 100;
+            display: none;
         }
     </style>
 </head>
 <body>
+    <div id="container"></div>
+    
     <div id="loading">
-        <h2>🏛️ Cargando Espacio LiDAR</h2>
-        <p style="margin-top: 15px; font-size: 14px;">Esto puede tardar 1-2 minutos...</p>
+        <h2 style="font-size: 26px; margin-bottom: 12px; font-weight: 600;">🏛️ Cargando Espacio</h2>
+        <div id="loadingBar">
+            <div id="loadingProgress"></div>
+        </div>
+        <p id="loadingText" style="font-size: 14px; color: #aaa; margin-bottom: 8px;">Inicializando...</p>
+        <p id="loadingDetail" style="font-size: 12px; color: #666;">Preparando visualización 3D</p>
     </div>
     
-    <button id="gyroButton">Activar Navegación</button>
+    <button id="gyroButton">🧭 Activar Giroscopio</button>
     
     <div id="info">
-        📱 Mueve el celular para mirar alrededor<br>
-        🚶 Camina físicamente para moverte
+        <strong>📱 Navegación:</strong><br>
+        Mueve el celular para mirar alrededor<br>
+        Explora el espacio en 360°
     </div>
 
-    <div class="potree_container">
-        <div id="potree_render_area"></div>
+    <div id="stats">
+        <strong>Estadísticas:</strong><br>
+        <span id="pointsLoaded">Puntos: Cargando...</span><br>
+        <span id="fps">FPS: --</span>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/potree@1.8.2/build/potree/potree.js"></script>
-    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        let viewer;
+        let scene, camera, renderer, pointCloud;
         let gyroEnabled = false;
-        let baseYaw = 0, basePitch = 0;
-        let currentYaw = 0, currentPitch = 0;
+        let yaw = 0, pitch = 0;
+        let initialYaw = null;
+        let frameCount = 0, lastTime = Date.now();
         
-        const modelURL = "https://pub-1e69cc75cdd542d999c8606439faeee6.r2.dev/salida_potree/chunks/metadata.json";
-
-        function init() {
-            viewer = new Potree.Viewer(document.getElementById("potree_render_area"));
-            
-            viewer.setEDLEnabled(true);
-            viewer.setFOV(75);
-            viewer.setPointBudget(3_000_000);
-            viewer.setMinNodeSize(0);
-            viewer.setBackground("gradient");
-            
-            // Configurar controles
-            viewer.setControls(viewer.orbitControls);
-            viewer.orbitControls.enabled = false; // Desactivar controles por defecto
-            
-            loadPointCloud();
-            setupGyroButton();
+        const baseURL = "https://pub-1e69cc75cdd542d999c8606439faeee6.r2.dev/pointclouds/index/";
+        
+        function updateLoading(text, detail, progress) {
+            document.getElementById('loadingText').textContent = text;
+            if (detail) document.getElementById('loadingDetail').textContent = detail;
+            if (progress !== undefined) {
+                document.getElementById('loadingProgress').style.width = Math.min(progress, 100) + '%';
+            }
         }
 
-        function loadPointCloud() {
-            Potree.loadPointCloud(modelURL, "Espacio", (e) => {
-                if (e.type === "loading_failed") {
-                    document.getElementById('loading').innerHTML = 
-                        '<h2>❌ Error al cargar</h2><p>No se pudo acceder al modelo</p>';
-                    return;
+        async function init() {
+            try {
+                updateLoading('Iniciando visualizador 3D', 'Configurando escena...', 10);
+                
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB);
+                scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
+
+                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+                camera.position.set(0, 1.7, 5);
+
+                renderer = new THREE.WebGLRenderer({ 
+                    antialias: true,
+                    powerPreference: "high-performance"
+                });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                document.getElementById('container').appendChild(renderer.domElement);
+
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+                scene.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight.position.set(100, 200, 100);
+                scene.add(directionalLight);
+
+                updateLoading('Cargando metadata', 'Conectando con servidor...', 20);
+                await loadPointCloud();
+                
+                setupControls();
+                window.addEventListener('resize', onWindowResize);
+                animate();
+                
+            } catch (error) {
+                console.error('Error:', error);
+                updateLoading('❌ Error', error.message, 0);
+            }
+        }
+
+        async function loadPointCloud() {
+            updateLoading('Descargando metadata', 'Analizando estructura de datos...', 30);
+            
+            const metadataResponse = await fetch(baseURL + 'metadata.json');
+            if (!metadataResponse.ok) throw new Error('No se pudo cargar metadata');
+            
+            const metadata = await metadataResponse.json();
+            console.log('Metadata cargada:', metadata);
+            
+            updateLoading('Cargando octree', 'Descargando estructura espacial...', 40);
+            
+            const octreeResponse = await fetch(baseURL + 'octree.bin');
+            if (!octreeResponse.ok) throw new Error('No se pudo cargar octree');
+            
+            const octreeBuffer = await octreeResponse.arrayBuffer();
+            console.log('Octree cargado:', octreeBuffer.byteLength, 'bytes');
+            
+            updateLoading('Procesando geometría', 'Construyendo nube de puntos...', 60);
+            
+            await processOctree(octreeBuffer, metadata);
+        }
+
+        async function processOctree(buffer, metadata) {
+            updateLoading('Analizando puntos', 'Extrayendo coordenadas y colores...', 70);
+            
+            const view = new DataView(buffer);
+            
+            // Potree 2.0 format: cada punto tiene XYZ (float32) + RGB (uint16)
+            const bytesPerPoint = 18; // 12 (XYZ) + 6 (RGB)
+            const numPoints = Math.floor(buffer.byteLength / bytesPerPoint);
+            
+            console.log('Procesando', numPoints, 'puntos');
+            
+            const positions = new Float32Array(numPoints * 3);
+            const colors = new Float32Array(numPoints * 3);
+            
+            let offset = 0;
+            let minY = Infinity;
+            
+            for (let i = 0; i < numPoints; i++) {
+                const x = view.getFloat32(offset, true); offset += 4;
+                const y = view.getFloat32(offset, true); offset += 4;
+                const z = view.getFloat32(offset, true); offset += 4;
+                
+                const r = view.getUint16(offset, true) / 65535; offset += 2;
+                const g = view.getUint16(offset, true) / 65535; offset += 2;
+                const b = view.getUint16(offset, true) / 65535; offset += 2;
+                
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+                
+                colors[i * 3] = r;
+                colors[i * 3 + 1] = g;
+                colors[i * 3 + 2] = b;
+                
+                if (y < minY) minY = y;
+                
+                if (i % 100000 === 0) {
+                    const progress = 70 + ((i / numPoints) * 25);
+                    updateLoading('Procesando puntos', `${(i/1000000).toFixed(1)}M / ${(numPoints/1000000).toFixed(1)}M puntos`, progress);
                 }
-                
-                let pointcloud = e.pointcloud;
-                let material = pointcloud.material;
-                
-                viewer.scene.addPointCloud(pointcloud);
-                
-                // Configurar material
-                material.pointColorType = Potree.PointColorType.RGB;
-                material.size = 1.0;
-                material.pointSizeType = Potree.PointSizeType.ADAPTIVE;
-                material.shape = Potree.PointShape.SQUARE;
-                
-                // Ajustar vista inicial
-                viewer.fitToScreen();
-                
-                // Posicionar cámara a altura de persona
-                setTimeout(() => {
-                    const boundingBox = pointcloud.boundingBox;
-                    const center = boundingBox.getCenter(new THREE.Vector3());
-                    const minY = boundingBox.min.y;
-                    
-                    viewer.scene.view.position.set(
-                        center.x,
-                        minY + 1.7, // 1.7m sobre el suelo
-                        center.z
-                    );
-                    
-                    viewer.scene.view.lookAt(
-                        center.x,
-                        minY + 1.7,
-                        center.z - 5
-                    );
-                    
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('gyroButton').style.display = 'block';
-                    document.getElementById('info').style.display = 'block';
-                }, 1000);
-            });
+            }
+            
+            updateLoading('Creando visualización', 'Finalizando...', 95);
+            
+            createPointCloudMesh(positions, colors, numPoints, minY);
         }
 
-        function setupGyroButton() {
-            const btn = document.getElementById('gyroButton');
-            btn.addEventListener('click', () => {
-                if (!gyroEnabled) {
-                    requestGyroPermission();
+        function createPointCloudMesh(positions, colors, count, groundLevel) {
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.computeBoundingSphere();
+
+            const material = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true,
+                sizeAttenuation: true
+            });
+
+            pointCloud = new THREE.Points(geometry, material);
+            
+            // Centrar modelo
+            const boundingBox = new THREE.Box3().setFromObject(pointCloud);
+            const center = boundingBox.getCenter(new THREE.Vector3());
+            pointCloud.position.sub(center);
+            
+            scene.add(pointCloud);
+            
+            // Posicionar cámara
+            camera.position.set(0, 1.7, 5);
+            camera.lookAt(0, 1.7, 0);
+            
+            updateLoading('✓ Cargado exitosamente', `${(count/1000000).toFixed(1)}M puntos visualizados`, 100);
+            
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('gyroButton').style.display = 'block';
+                document.getElementById('info').style.display = 'block';
+                document.getElementById('stats').style.display = 'block';
+                document.getElementById('pointsLoaded').textContent = `Puntos: ${(count/1000000).toFixed(2)}M`;
+            }, 1000);
+            
+            console.log('✓ Nube de puntos cargada:', count, 'puntos');
+        }
+
+        function setupControls() {
+            document.getElementById('gyroButton').addEventListener('click', toggleGyro);
+            
+            // Mouse/Touch controls
+            let isDragging = false;
+            let lastX = 0, lastY = 0;
+            
+            renderer.domElement.addEventListener('mousedown', (e) => {
+                if (gyroEnabled) return;
+                isDragging = true;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mousemove', (e) => {
+                if (!isDragging || gyroEnabled) return;
+                const deltaX = e.clientX - lastX;
+                const deltaY = e.clientY - lastY;
+                yaw -= deltaX * 0.005;
+                pitch -= deltaY * 0.005;
+                pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+                lastX = e.clientX;
+                lastY = e.clientY;
+            });
+            
+            renderer.domElement.addEventListener('mouseup', () => isDragging = false);
+            
+            // Touch
+            renderer.domElement.addEventListener('touchstart', (e) => {
+                if (gyroEnabled || e.touches.length !== 1) return;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            });
+            
+            renderer.domElement.addEventListener('touchmove', (e) => {
+                if (gyroEnabled || e.touches.length !== 1) return;
+                e.preventDefault();
+                const deltaX = e.touches[0].clientX - lastX;
+                const deltaY = e.touches[0].clientY - lastY;
+                yaw -= deltaX * 0.005;
+                pitch -= deltaY * 0.005;
+                pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            }, { passive: false });
+        }
+
+        function toggleGyro() {
+            if (!gyroEnabled) {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(response => {
+                            if (response === 'granted') enableGyro();
+                        })
+                        .catch(console.error);
                 } else {
-                    disableGyro();
+                    enableGyro();
                 }
-            });
-        }
-
-        function requestGyroPermission() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && 
-                typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission()
-                    .then(response => {
-                        if (response === 'granted') {
-                            enableGyro();
-                        }
-                    })
-                    .catch(console.error);
             } else {
-                enableGyro();
+                disableGyro();
             }
         }
 
         function enableGyro() {
             gyroEnabled = true;
-            window.addEventListener('deviceorientation', handleOrientation);
-            
-            const btn = document.getElementById('gyroButton');
-            btn.textContent = 'Desactivar Navegación';
-            btn.classList.add('active');
-            
-            // Desactivar controles de ratón/touch
-            viewer.orbitControls.enabled = false;
+            initialYaw = null;
+            window.addEventListener('deviceorientation', onDeviceOrientation);
+            document.getElementById('gyroButton').textContent = '🧭 Desactivar Giroscopio';
+            document.getElementById('gyroButton').classList.add('active');
+            document.getElementById('info').innerHTML = '<strong>🧭 Modo Giroscopio Activo</strong><br>Mueve el celular libremente<br>para explorar el espacio';
         }
 
         function disableGyro() {
             gyroEnabled = false;
-            window.removeEventListener('deviceorientation', handleOrientation);
-            
-            const btn = document.getElementById('gyroButton');
-            btn.textContent = 'Activar Navegación';
-            btn.classList.remove('active');
-            
-            viewer.orbitControls.enabled = true;
+            window.removeEventListener('deviceorientation', onDeviceOrientation);
+            document.getElementById('gyroButton').textContent = '🧭 Activar Giroscopio';
+            document.getElementById('gyroButton').classList.remove('active');
+            document.getElementById('info').innerHTML = '<strong>📱 Navegación:</strong><br>Mueve el celular para mirar alrededor<br>Explora el espacio en 360°';
         }
 
-        function handleOrientation(event) {
-            if (!gyroEnabled || !viewer || !viewer.scene) return;
+        function onDeviceOrientation(event) {
+            const alpha = event.alpha || 0;
+            const beta = event.beta || 0;
             
-            const alpha = event.alpha || 0; // Z axis (compass)
-            const beta = event.beta || 0;   // X axis (front-back tilt)
-            const gamma = event.gamma || 0; // Y axis (left-right tilt)
+            if (initialYaw === null) initialYaw = alpha;
             
-            // Convertir a radianes
-            const yaw = THREE.MathUtils.degToRad(alpha);
-            const pitch = THREE.MathUtils.degToRad(beta - 90);
-            
-            // Limitar pitch
-            const clampedPitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
-            
-            // Aplicar rotación a la cámara
-            const camera = viewer.scene.getActiveCamera();
-            const position = viewer.scene.view.position.clone();
-            
-            // Calcular dirección de vista
-            const lookDistance = 5;
-            const lookAt = new THREE.Vector3(
-                position.x + Math.sin(yaw) * Math.cos(clampedPitch) * lookDistance,
-                position.y + Math.sin(clampedPitch) * lookDistance,
-                position.z + Math.cos(yaw) * Math.cos(clampedPitch) * lookDistance
-            );
-            
-            viewer.scene.view.lookAt(lookAt);
+            yaw = -THREE.MathUtils.degToRad(alpha - initialYaw);
+            pitch = THREE.MathUtils.degToRad(beta - 90);
+            pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, pitch));
         }
 
-        // Iniciar cuando cargue la página
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            camera.rotation.order = 'YXZ';
+            camera.rotation.y = -yaw;
+            camera.rotation.x = pitch;
+
+            // FPS counter
+            frameCount++;
+            const now = Date.now();
+            if (now - lastTime >= 1000) {
+                document.getElementById('fps').textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            renderer.render(scene, camera);
+        }
+
         window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
     </script>
 </body>
 </html>
